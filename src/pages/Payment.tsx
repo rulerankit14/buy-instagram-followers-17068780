@@ -70,7 +70,7 @@ export default function Payment() {
 
         const returnUrl = `${window.location.origin}/success?order_id=${data.order_id}`;
 
-        // If a specific UPI app was selected, attempt to trigger UPI Intent directly.
+        // If a specific UPI app was selected, attempt to trigger UPI intent directly.
         // Fallback to hosted checkout if the SDK method/component is unavailable.
         if (
           method === "upi" &&
@@ -78,7 +78,8 @@ export default function Payment() {
           typeof cashfree?.create === "function" &&
           typeof cashfree?.pay === "function"
         ) {
-          const upiIntent = cashfree.create("upiIntent", {
+          // Cashfree.js v3 uses the "upiApp" component (not "upiIntent")
+          const upiApp = cashfree.create("upiApp", {
             values: {
               upiApp: opts.upiApp,
             },
@@ -87,7 +88,7 @@ export default function Payment() {
           cashfree.pay({
             paymentSessionId: data.payment_session_id,
             returnUrl,
-            paymentMethod: upiIntent,
+            paymentMethod: upiApp,
           });
           return;
         }
