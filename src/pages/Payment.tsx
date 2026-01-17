@@ -34,14 +34,15 @@ export default function Payment() {
 
   const [method, setMethod] = React.useState<PayMethod>("upi");
   const [status, setStatus] = React.useState<"idle" | "processing" | "redirecting">("idle");
+  const [selectedUpiApp, setSelectedUpiApp] = React.useState<"phonepe" | "gpay" | "paytm" | "bhim" | null>(null);
 
   React.useEffect(() => {
     if (!order) navigate("/plans");
   }, [order, navigate]);
 
-  const handlePayment = async () => {
+  const handlePayment = async (opts?: { upiApp?: "phonepe" | "gpay" | "paytm" | "bhim" }) => {
     if (!order) return;
-    
+
     setStatus("processing");
 
     try {
@@ -62,15 +63,38 @@ export default function Payment() {
 
       if (data?.payment_session_id) {
         setStatus("redirecting");
-        
-        // Initialize Cashfree checkout
+
         const cashfree = (window as any).Cashfree({
           mode: "production", // Change to "sandbox" for testing
         });
 
+        const returnUrl = `${window.location.origin}/success?order_id=${data.order_id}`;
+
+        // If a specific UPI app was selected, attempt to trigger UPI Intent directly.
+        // Fallback to hosted checkout if the SDK method/component is unavailable.
+        if (
+          method === "upi" &&
+          opts?.upiApp &&
+          typeof cashfree?.create === "function" &&
+          typeof cashfree?.pay === "function"
+        ) {
+          const upiIntent = cashfree.create("upiIntent", {
+            values: {
+              upiApp: opts.upiApp,
+            },
+          });
+
+          cashfree.pay({
+            paymentSessionId: data.payment_session_id,
+            returnUrl,
+            paymentMethod: upiIntent,
+          });
+          return;
+        }
+
         cashfree.checkout({
           paymentSessionId: data.payment_session_id,
-          returnUrl: `${window.location.origin}/success?order_id=${data.order_id}`,
+          returnUrl,
         });
       } else {
         throw new Error("Failed to initialize payment");
@@ -87,10 +111,10 @@ export default function Payment() {
   };
 
   const upiApps = [
-    { name: "PhonePe", logo: phonePeLogo },
-    { name: "Google Pay", logo: gPayLogo },
-    { name: "Paytm", logo: paytmLogo },
-    { name: "BHIM", logo: bhimLogo },
+    { name: "PhonePe", code: "phonepe" as const, logo: phonePeLogo },
+    { name: "Google Pay", code: "gpay" as const, logo: gPayLogo },
+    { name: "Paytm", code: "paytm" as const, logo: paytmLogo },
+    { name: "BHIM", code: "bhim" as const, logo: bhimLogo },
   ];
 
   return (
@@ -168,9 +192,18 @@ export default function Payment() {
                     <button
                       key={app.name}
                       type="button"
-                      className="flex flex-col items-center gap-3 rounded-2xl border border-border/60 bg-background/60 p-4 transition-all hover:bg-background hover:shadow-soft"
+                      onClick={() => {
+                        if (status !== "idle") return;
+                        setSelectedUpiApp(app.code);
+                        void handlePayment({ upiApp: app.code });
+                      }}
+                      className={
+                        "flex flex-col items-center gap-3 rounded-2xl border border-border/60 bg-background/60 p-4 transition-all hover:bg-background hover:shadow-soft focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" +
+                        (selectedUpiApp === app.code ? " ring-2 ring-primary" : "")
+                      }
+                      aria-pressed={selectedUpiApp === app.code}
                     >
-                      <img src={app.logo} alt={app.name} className="h-12 w-12 object-contain" />
+                      <img src={app.logo} alt={`${app.name} UPI`} className="h-12 w-12 object-contain" />
                       <span className="text-sm font-medium text-foreground">{app.name}</span>
                     </button>
                   ))}
@@ -180,12 +213,12 @@ export default function Payment() {
                   variant="brand"
                   size="pill"
                   className="mt-4 w-full text-base font-semibold"
-                  onClick={handlePayment}
+                  onClick={() => void handlePayment(selectedUpiApp ? { upiApp: selectedUpiApp } : undefined)}
                   disabled={status !== "idle"}
                 >
                   {status === "processing" && "Creating order…"}
                   {status === "redirecting" && "Opening payment…"}
-                  {status === "idle" && "Pay with Any UPI App"}
+                  {status === "idle" && (selectedUpiApp ? "Pay with Selected UPI App" : "Pay with Any UPI App")}
                 </Button>
 
                 <p className="text-center text-xs text-muted-foreground">
@@ -229,7 +262,7 @@ export default function Payment() {
                   variant="brand"
                   size="pill"
                   className="w-full text-base font-semibold"
-                  onClick={handlePayment}
+                  onClick={() => void handlePayment()}
                   disabled={status !== "idle"}
                 >
                   {status === "processing" && "Creating order…"}
@@ -268,7 +301,7 @@ export default function Payment() {
                   variant="brand"
                   size="pill"
                   className="w-full text-base font-semibold"
-                  onClick={handlePayment}
+                  onClick={() => void handlePayment()}
                   disabled={status !== "idle"}
                 >
                   {status === "processing" && "Creating order…"}
