@@ -235,7 +235,6 @@ export default function Payment() {
                       onClick={() => {
                         if (status !== "idle") return;
                         setSelectedUpiApp(app.code);
-                        void handlePayment({ upiApp: app.code });
                       }}
                       className={
                         "flex flex-col items-center gap-3 rounded-2xl border border-border/60 bg-background/60 p-4 transition-all hover:bg-background hover:shadow-soft focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" +
@@ -253,12 +252,12 @@ export default function Payment() {
                   variant="brand"
                   size="pill"
                   className="mt-4 w-full text-base font-semibold"
-                  onClick={() => void handlePayment(selectedUpiApp ? { upiApp: selectedUpiApp } : undefined)}
+                  onClick={() => void handlePayment()}
                   disabled={status !== "idle"}
                 >
                   {status === "processing" && "Creating order…"}
                   {status === "redirecting" && "Opening payment…"}
-                  {status === "idle" && (selectedUpiApp ? "Pay with Selected UPI App" : "Pay with Any UPI App")}
+                  {status === "idle" && "Pay with Any UPI App"}
                 </Button>
 
                 <p className="text-center text-xs text-muted-foreground">
