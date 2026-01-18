@@ -34,11 +34,57 @@ export default function Payment() {
 
   const [method, setMethod] = React.useState<PayMethod>("upi");
   const [status, setStatus] = React.useState<"idle" | "processing" | "redirecting">("idle");
-  const [selectedUpiApp, setSelectedUpiApp] = React.useState<"phonepe" | "gpay" | "paytm" | "bhim" | null>(null);
+  const [selectedUpiApp, setSelectedUpiApp] = React.useState<
+    "phonepe" | "gpay" | "paytm" | "bhim" | null
+  >(null);
+
+  const cashfreeRef = React.useRef<any>(null);
+  const upiMethodsRef = React.useRef<Record<"phonepe" | "gpay" | "paytm" | "bhim", any> | null>(null);
 
   React.useEffect(() => {
     if (!order) navigate("/plans");
   }, [order, navigate]);
+
+  // Pre-warm UPI app components so tapping a specific app opens faster.
+  React.useEffect(() => {
+    const CashfreeCtor = (window as any)?.Cashfree;
+    if (!CashfreeCtor) return;
+
+    if (!cashfreeRef.current) {
+      cashfreeRef.current = CashfreeCtor({ mode: "production" });
+    }
+
+    const cashfree = cashfreeRef.current;
+    if (!cashfree || typeof cashfree?.create !== "function") return;
+
+    if (upiMethodsRef.current) return;
+
+    const mountAndStore = (code: "phonepe" | "gpay" | "paytm" | "bhim") => {
+      try {
+        const pm = cashfree.create("upiApp", { values: { upiApp: code } });
+        const mountId = `#cashfree-upi-mount-${code}`;
+
+        if (typeof pm?.mount === "function") pm.mount(mountId);
+
+        if (typeof pm?.on === "function") {
+          pm.on("loaderror", () => {
+            // Leave fallback handling to the click flow.
+          });
+        }
+
+        return pm;
+      } catch {
+        return null;
+      }
+    };
+
+    upiMethodsRef.current = {
+      phonepe: mountAndStore("phonepe"),
+      gpay: mountAndStore("gpay"),
+      paytm: mountAndStore("paytm"),
+      bhim: mountAndStore("bhim"),
+    };
+  }, []);
 
   const handlePayment = async (opts?: { upiApp?: "phonepe" | "gpay" | "paytm" | "bhim" }) => {
     if (!order) return;
@@ -64,51 +110,26 @@ export default function Payment() {
       if (data?.payment_session_id) {
         setStatus("redirecting");
 
-        const cashfree = (window as any).Cashfree({
-          mode: "production", // Change to "sandbox" for testing
-        });
+        const CashfreeCtor = (window as any)?.Cashfree;
+        const cashfree = cashfreeRef.current ?? (CashfreeCtor ? CashfreeCtor({ mode: "production" }) : null);
+        if (!cashfree) throw new Error("Payment SDK not loaded");
+        cashfreeRef.current = cashfree;
 
         const returnUrl = `${window.location.origin}/success?order_id=${data.order_id}`;
 
         // If a specific UPI app was selected, attempt to trigger UPI intent directly.
         // Fallback to hosted checkout if the SDK method/component is unavailable.
-        if (
-          method === "upi" &&
-          opts?.upiApp &&
-          typeof cashfree?.create === "function" &&
-          typeof cashfree?.pay === "function"
-        ) {
-          // Cashfree.js v3 uses the "upiApp" component (not "upiIntent").
-          // This component may require mounting to DOM to initialize properly.
-          const upiApp = cashfree.create("upiApp", {
-            values: {
-              upiApp: opts.upiApp,
-            },
-          });
+        if (method === "upi" && opts?.upiApp && typeof cashfree?.pay === "function") {
+          const upiMethod = upiMethodsRef.current?.[opts.upiApp];
 
-          try {
-            if (typeof upiApp?.mount === "function") {
-              upiApp.mount("#cashfree-upi-mount");
-            }
-
-            if (typeof upiApp?.on === "function") {
-              upiApp.on("loaderror", () => {
-                cashfree.checkout({
-                  paymentSessionId: data.payment_session_id,
-                  returnUrl,
-                });
-              });
-            }
-          } catch {
-            // Ignore mount/listener issues and let checkout handle it.
+          if (upiMethod) {
+            cashfree.pay({
+              paymentSessionId: data.payment_session_id,
+              returnUrl,
+              paymentMethod: upiMethod,
+            });
+            return;
           }
-
-          cashfree.pay({
-            paymentSessionId: data.payment_session_id,
-            returnUrl,
-            paymentMethod: upiApp,
-          });
-          return;
         }
 
         cashfree.checkout({
@@ -338,8 +359,16 @@ export default function Payment() {
           </Card>
          </section>
 
-         {/* Hidden mount point required by Cashfree UPI app component */}
-         <div id="cashfree-upi-mount" className="hidden" aria-hidden="true" />
+         {/* Offscreen mount points required by Cashfree UPI app component (keep in DOM; don't use `hidden`) */}
+         <div
+           aria-hidden="true"
+           className="pointer-events-none absolute left-[-9999px] top-0 h-px w-px overflow-hidden"
+         >
+           <div id="cashfree-upi-mount-phonepe" />
+           <div id="cashfree-upi-mount-gpay" />
+           <div id="cashfree-upi-mount-paytm" />
+           <div id="cashfree-upi-mount-bhim" />
+         </div>
        </main>
      </GlowField>
   );
