@@ -257,7 +257,10 @@ export default function Payment() {
                 >
                   {status === "processing" && "Creating order…"}
                   {status === "redirecting" && "Opening payment…"}
-                  {status === "idle" && "Pay with Any UPI App"}
+                  {status === "idle" &&
+                    (selectedUpiApp
+                      ? `Pay with ${upiApps.find((a) => a.code === selectedUpiApp)?.name ?? "UPI App"}`
+                      : "Pay with Any UPI App")}
                 </Button>
 
                 <p className="text-center text-xs text-muted-foreground">
